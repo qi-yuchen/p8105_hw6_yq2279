@@ -1,0 +1,128 @@
+---
+title: "p8105_hw6_yq2279"
+author: "Qi Yuchen"
+date: "2019/11/21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(bnpa)
+library(modelr)
+library(purrr)
+
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = FALSE,
+	fig.width = 8, 
+  fig.height = 6,
+  out.width = "90%"
+)
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+```
+
+# Problem 1
+
+### Data cleaning
+
+```{r}
+df_bw = read.csv("data/birthweight.csv") %>% 
+  janitor::clean_names() %>% 
+  mutate(babysex = factor(babysex,levels = c(1,2), labels = c("male","female")),
+         frace = factor(frace, levels = c(1,2,3,4,8,9),labels = c("White","Black","Asian","Puerto Rican","Other","Unknown")),
+         malform = factor(malform, levels = c(0,1), labels = c("absent","present")),
+         mrace = factor(mrace, levels = c(1,2,3,4,8,9),labels = c("White","Black","Asian","Puerto Rican","Other","Unknown")))
+
+check.na(df_bw) #library(bnpa)
+  
+```
+
+`babysex`, `frace`, `malform` and `mrace` are converted to factor. No `NA` values in this dataset.
+
+### Propose a regression model for birthweight
+
+```{r}
+mult_fit = lm(bwt ~ ., data = df_bw)
+step(mult_fit, direction = 'backward')
+```
+
+Based on stepwise regression, the model proposed is using multiple linear regression with predictors babysex, bhead, blength, delwt, fincome, gaweeks, mheight, mrace, parity, ppwt and smoken.
+
+### Show a plot of model residuals against fitted values
+
+```{r}
+fit_1 = lm(bwt ~ babysex + bhead + blength + delwt + fincome + gaweeks + mheight + mrace + parity + ppwt + smoken, data = df_bw)
+
+df_bw %>% 
+  add_predictions(fit_1) %>% 
+  add_residuals(fit_1) %>% 
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point(alpha = 0.5) + geom_smooth(method = "lm") +
+  labs(
+    x = "fitted values",
+    y = "residuals"
+  )
+```
+
+### Compare the model to two others
+
+```{r}
+fit_2 = lm(bwt ~ blength + gaweeks, data = df_bw)
+fit_3 = lm(bwt ~ bhead * blength * babysex, data = df_bw)
+
+cv_df =
+  crossv_mc(df_bw, 100) %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+
+cv_df = 
+  cv_df %>% 
+  mutate(model_1 = map(train, ~lm(bwt ~ babysex + bhead + blength + delwt + fincome + gaweeks + mheight + mrace + parity + ppwt + smoken, data = .x)),
+         model_2 = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+         model_3 = map(train, ~lm(bwt ~ bhead * blength * babysex, data = .x))) %>% 
+  mutate(rmse_1 = map2_dbl(model_1, test, ~rmse(model = .x, data = .y)),
+         rmse_2 = map2_dbl(model_2, test, ~rmse(model = .x, data = .y)),
+         rmse_3 = map2_dbl(model_3, test, ~rmse(model = .x, data = .y)))
+
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+Based on the result, model_1, which uses multiple linear regression with predictors babysex, bhead, blength, delwt, fincome, gaweeks, mheight, mrace, parity, ppwt and smoken, performs best in predictive accuracy.
+
+# Problem 2
+
+### Download the data
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+### 
