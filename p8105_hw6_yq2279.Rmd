@@ -2,7 +2,7 @@
 title: "p8105_hw6_yq2279"
 author: "Qi Yuchen"
 date: "2019/11/21"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -125,4 +125,55 @@ weather_df =
   select(name, id, everything())
 ```
 
-### 
+### Boostrap
+
+```{r}
+results = 
+  weather_df %>% 
+  select(tmin, tmax) %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~ lm(tmax ~ tmin, data = .x)),
+    results_1 = map(models, broom::glance),
+    results_2 = map(models, broom::tidy)) %>% 
+  select(.id, results_1, results_2)
+```
+
+### Plots for r_squared and log(beta0*beta1)
+
+```{r}
+df_r_squared = 
+  results %>% 
+  select(results_1) %>% 
+  unnest(results_1) %>% 
+  select(r.squared)
+df_r_squared %>% 
+  ggplot(aes(x = r.squared)) + geom_density()
+
+df_log_beta = 
+  results %>% 
+  select(.id, results_2) %>% 
+  unnest(results_2) %>% 
+  select(.id, term, estimate) %>% 
+  pivot_wider(id_cols = .id,names_from = term,values_from = estimate) %>% 
+  rename(intercept = "(Intercept)") %>% 
+  mutate(log_beta_product = log(intercept * tmin)) %>% 
+  select(log_beta_product)
+df_log_beta %>% 
+  ggplot(aes(x = log_beta_product)) + geom_density()
+```
+
+The distributions of r squared and log(beta0*beta1) are nearly bell-shaped and approximately normal.
+
+### 95% confidence interval
+
+```{r}
+df_r_squared %>% 
+  summarise("2.5%" = quantile(r.squared,0.025), "97.5% " = quantile(r.squared,0.975)) %>% 
+  knitr::kable(caption = "95% confidence interval for r_squared" ) 
+
+df_log_beta %>% 
+  summarise("2.5%" = quantile(log_beta_product, 0.025), "97.5% " = quantile(log_beta_product, 0.975)) %>% 
+  knitr::kable(caption = "95% confidence interval for log(beta0*beta1)" ) 
+```
+
